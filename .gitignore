@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+env/
+
+# Databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Machine Learning / Data files
+*.pkl
+*.pt
+*.pth
+
+# macOS
+.DS_Store
+
+# Frontend
+node_modules/
+dist/
+build/
+.env

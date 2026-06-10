@@ -1,0 +1,14 @@
+# SignalAgent — generator dependencies
+# Install with: pip install -r requirements-generator.txt
+
+networkx>=3.3
+numpy>=1.26
+
+# Test dependencies
+pytest>=8.0
+
+# Optional: Louvain community detection (enables community detection tests)
+python-louvain>=0.16
+
+# Optional: LLM profile generation via Gemini (requires GEMINI_API_KEY env var)
+# google-generativeai>=0.8
