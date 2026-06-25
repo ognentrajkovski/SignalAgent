@@ -256,7 +256,7 @@ export default function GraphViewPanel() {
 
             {selected.nodeType === 'person' && (
               <>
-                <InfoRow label="Type" value={selected.qualified ? '✓ Qualified' : 'Unqualified'} color={selected.qualified ? 'var(--green)' : 'var(--t3)'} />
+                <InfoRow label="Type" value={selected.qualified ? 'Qualified' : 'Unqualified'} color={selected.qualified ? 'var(--green)' : 'var(--t3)'} />
                 <InfoRow label="GNN Score" value={`${(selected.score * 100).toFixed(0)}%`} color="var(--cyan)" />
                 <InfoRow label="Community" value={`#${selected.community}`} color={COMMUNITY_COLORS[selected.community % 3].replace('0.18', '1').replace('0.15', '1')} />
 
@@ -267,7 +267,7 @@ export default function GraphViewPanel() {
                     style={{ marginTop: '0.5rem' }}
                     onClick={openTimeline}
                   >
-                    View Timeline →
+                    View Timeline
                   </button>
                 )}
               </>

@@ -56,7 +56,8 @@ def load_data():
     for n in nodes_by_type["post"]:
         d = G.nodes[n]
         post_eng.append(float(d.get("engagement_count", 0)))
-        post_topic.append(np.random.randn(16))
+        rng = np.random.RandomState(abs(hash(n)) % (2**31))
+        post_topic.append(rng.randn(16))
 
     data = HeteroData()
     data["person"].person_role = torch.tensor(person_role_idx, dtype=torch.long)
@@ -111,10 +112,10 @@ def train():
     edge_types = list(data.edge_index_dict.keys())
     
     model = PersonClassifier(hidden_dim=32, num_roles=num_roles, edge_types=edge_types)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=1e-3)
     
-    print("Training 2-Layer R-GCN...")
-    for epoch in range(1, 101):
+    print("Training 2-Layer R-GCN (with dropout + weight decay)...")
+    for epoch in range(1, 41):  # Stop early — avoid saturation
         model.train()
         optimizer.zero_grad()
         
@@ -129,7 +130,7 @@ def train():
             "signal_source": data["signal_source"].signal_source,
         }
         
-        logits = model(x_dict, data.edge_index_dict)
+        logits = model(x_dict, data.edge_index_dict, training=True)
         train_mask = data["person"].train_mask
         
         loss = F.binary_cross_entropy_with_logits(logits[train_mask], data["person"].y[train_mask])
@@ -144,7 +145,7 @@ def train():
             val_y = data["person"].y[val_mask]
             acc = (val_preds == val_y).float().mean().item()
             
-        if epoch % 10 == 0:
+        if epoch % 5 == 0:
             print(f"Epoch {epoch:03d} | Loss: {loss.item():.4f} | Val Accuracy: {acc:.4f}")
 
     torch.save(model.state_dict(), "model.pt")

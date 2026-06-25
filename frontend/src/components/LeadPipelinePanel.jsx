@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Users, AlertTriangle, CheckCircle, TrendingUp, ChevronRight, Loader2 } from 'lucide-react'
-import { getLeads } from '../api'
+import { Users, AlertTriangle, CheckCircle, TrendingUp, ChevronRight, Loader2, Trash2 } from 'lucide-react'
+import { getLeads, deleteLead } from '../api'
 
 const MOCK_LEADS = [
   { id: 1, person_id: 'p_001', name: 'Alex Chen', company: 'Stripe', role: 'Staff Engineer', gnn_score: 0.91, llm_score: 0.62, disagreement_flag: true, qualified: true, signal: 'linkedin.com/posts/react-2024' },
@@ -11,6 +11,23 @@ const MOCK_LEADS = [
   { id: 5, person_id: 'p_005', name: 'Dana Wu', company: 'Notion', role: 'VP Product', gnn_score: 0.29, llm_score: 0.31, disagreement_flag: false, qualified: false, signal: 'linkedin.com/in/danawu' },
   { id: 6, person_id: 'p_006', name: 'Chris Morgan', company: 'Loom', role: 'Head of Growth', gnn_score: 0.72, llm_score: 0.41, disagreement_flag: true, qualified: true, signal: 'linkedin.com/posts/loom-series' },
 ]
+
+const MOCK_NAMES = ['Alex Chen', 'Maya Patel', 'Jordan Kim', 'Sam Rivera', 'Dana Wu', 'Chris Morgan', 'Priya Lal', 'Nina Shah']
+const MOCK_COMPANIES = ['Stripe', 'Vercel', 'Figma', 'Linear', 'Notion', 'Loom', 'HubSpot', 'Amplitude']
+const MOCK_ROLES = ['VP Revenue Operations', 'Head of Growth', 'Director of Demand Gen', 'RevOps Lead', 'GTM Strategy Lead', 'Chief Revenue Officer']
+
+function mockProfileForLead(lead) {
+  const key = String(lead.person_id ?? lead.id ?? '')
+  const hash = [...key].reduce((sum, char) => sum + char.charCodeAt(0), 0)
+
+  return {
+    name: MOCK_NAMES[hash % MOCK_NAMES.length],
+    company: MOCK_COMPANIES[hash % MOCK_COMPANIES.length],
+    role: MOCK_ROLES[hash % MOCK_ROLES.length],
+    source: lead.source ?? lead.signal ?? `linkedin.com/in/${key.replaceAll('_', '-')}`,
+    signal: lead.source ?? lead.signal ?? `linkedin.com/in/${key.replaceAll('_', '-')}`,
+  }
+}
 
 function ScoreBar({ value, colorVar }) {
   return (
@@ -35,16 +52,44 @@ function ScoreBar({ value, colorVar }) {
 
 export default function LeadPipelinePanel() {
   const navigate = useNavigate()
-  const { data, isLoading, error } = useQuery({
+  const qc = useQueryClient()
+  const { data, isLoading, error, isPlaceholderData } = useQuery({
     queryKey: ['leads'],
     queryFn: getLeads,
     placeholderData: MOCK_LEADS,
   })
 
-  const leads = (data ?? MOCK_LEADS).map((l, i) => ({
-    ...MOCK_LEADS[i % MOCK_LEADS.length],
-    ...l,
-  }))
+  const deleteMutation = useMutation({
+    mutationFn: (id) => deleteLead(id),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['leads'] })
+      const previousLeads = qc.getQueryData(['leads'])
+
+      qc.setQueryData(['leads'], (current = []) =>
+        current.filter((lead) => String(lead.id) !== String(id))
+      )
+
+      return { previousLeads }
+    },
+    onError: (_error, _id, context) => {
+      if (context?.previousLeads) {
+        qc.setQueryData(['leads'], context.previousLeads)
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] })
+      qc.invalidateQueries({ queryKey: ['signal-sources'] })
+      qc.invalidateQueries({ queryKey: ['strategy'] })
+    },
+  })
+
+  const leads = isPlaceholderData
+    ? MOCK_LEADS
+    : (data ?? []).map((lead) => {
+      const profile = mockProfileForLead(lead)
+      const source = lead.source ?? lead.signal ?? profile.source
+      return { ...profile, ...lead, source, signal: source }
+    })
 
   const qualified = leads.filter((l) => l.qualified)
   const disagreements = leads.filter((l) => l.disagreement_flag)
@@ -102,7 +147,7 @@ export default function LeadPipelinePanel() {
               <th>LLM Score</th>
               <th>Status</th>
               <th>Signal</th>
-              <th></th>
+              <th style={{ width: 80 }}></th>
             </tr>
           </thead>
           <tbody>
@@ -110,8 +155,12 @@ export default function LeadPipelinePanel() {
               <tr
                 key={lead.id}
                 id={`lead-row-${lead.id}`}
-                onClick={() => navigate(`/leads/${lead.id}`)}
-                style={lead.disagreement_flag ? { background: 'rgba(255,180,0,0.03)' } : {}}
+                onClick={() => navigate(`/leads/${lead.id}`, { state: { lead } })}
+                style={{
+                  ...(lead.disagreement_flag ? { background: 'rgba(255,180,0,0.03)' } : {}),
+                  opacity: deleteMutation.isPending && String(deleteMutation.variables) === String(lead.id) ? 0.4 : 1,
+                  transition: 'opacity 0.2s',
+                }}
               >
                 {/* Name */}
                 <td>
@@ -132,22 +181,48 @@ export default function LeadPipelinePanel() {
                 <td>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                     {lead.qualified
-                      ? <span className="flag-green">✓ Qualified</span>
+                      ? <span className="flag-green">Qualified</span>
                       : <span style={{ fontSize: '0.65rem', color: 'var(--t3)' }}>Unqualified</span>
                     }
                     {lead.disagreement_flag && (
-                      <span className="flag-amber">⚡ Disagree</span>
+                      <span className="flag-amber">Disagree</span>
                     )}
                   </div>
                 </td>
                 {/* Signal */}
                 <td>
                   <span className="truncate" style={{ maxWidth: 140, display: 'block', fontSize: 'var(--text-sm)', color: 'var(--t3)' }}>
-                    {lead.signal ?? '—'}
+                    {lead.source ?? lead.signal ?? '—'}
                   </span>
                 </td>
-                <td>
-                  <ChevronRight size={14} style={{ color: 'var(--t3)' }} />
+                {/* Actions */}
+                <td onClick={(e) => e.stopPropagation()}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <ChevronRight size={14} style={{ color: 'var(--t3)' }} />
+                    <button
+                      type="button"
+                      id={`delete-lead-${lead.id}`}
+                      data-lead-id={lead.id}
+                      className="btn btn-ghost btn-sm"
+                      title={`Delete lead ${lead.id}`}
+                      disabled={deleteMutation.isPending || isPlaceholderData}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const leadId = e.currentTarget.dataset.leadId
+                        if (!leadId) return
+                        deleteMutation.mutate(leadId)
+                      }}
+                      style={{
+                        color: 'var(--red)',
+                        padding: '0.25rem',
+                        borderRadius: 6,
+                      }}
+                    >
+                      {deleteMutation.isPending && String(deleteMutation.variables) === String(lead.id)
+                        ? <Loader2 size={13} style={{ animation: 'spin 0.7s linear infinite' }} />
+                        : <Trash2 size={13} />}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -156,7 +231,7 @@ export default function LeadPipelinePanel() {
       </div>
 
       <p style={{ marginTop: '0.75rem', fontSize: 'var(--text-sm)', color: 'var(--t3)', textAlign: 'right' }}>
-        Click a row to view the full lead timeline ↗
+        Click a row to view the full lead timeline
       </p>
     </div>
   )

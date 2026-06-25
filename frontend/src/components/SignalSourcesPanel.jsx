@@ -1,27 +1,106 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Radio, Plus, Link2, Trash2, Loader2, AlertCircle, Users } from 'lucide-react'
-import { addSignalSource, getSignalSources } from '../api'
+import { Radio, Plus, Link2, Loader2, AlertCircle, Users, Trash2 } from 'lucide-react'
+import { addSignalSource, deleteSignalSource, getLeads, getSignalSources } from '../api'
 
-// Mock source list with lead counts since backend doesn't have GET /signal-sources yet
 function useSources() {
   const qc = useQueryClient()
-  const [localSources, setLocalSources] = useState([])
 
-  const mutation = useMutation({
+  const sourcesQuery = useQuery({
+    queryKey: ['signal-sources'],
+    queryFn: getSignalSources,
+    refetchInterval: 3000,
+  })
+
+  const leadsQuery = useQuery({
+    queryKey: ['leads'],
+    queryFn: getLeads,
+    refetchInterval: 3000,
+  })
+
+  const addMutation = useMutation({
     mutationFn: addSignalSource,
-    onSuccess: (data) => {
-      setLocalSources((prev) => [...prev, { ...data, leadCount: 0 }])
-      qc.invalidateQueries(['leads'])
+    onSuccess: (source) => {
+      qc.setQueryData(['signal-sources'], (current = []) => {
+        if (current.some((item) => String(item.id) === String(source.id))) return current
+        return [source, ...current]
+      })
+      qc.invalidateQueries({ queryKey: ['signal-sources'] })
+      qc.invalidateQueries({ queryKey: ['leads'] })
+      qc.invalidateQueries({ queryKey: ['strategy'] })
     },
   })
 
-  return { sources: localSources, add: mutation.mutateAsync, isPending: mutation.isPending, error: mutation.error }
+  const deleteMutation = useMutation({
+    mutationFn: deleteSignalSource,
+    onMutate: async (sourceId) => {
+      await qc.cancelQueries({ queryKey: ['signal-sources'] })
+      await qc.cancelQueries({ queryKey: ['leads'] })
+
+      const previousSources = qc.getQueryData(['signal-sources'])
+      const previousLeads = qc.getQueryData(['leads'])
+      const deletedSource = previousSources?.find((source) => String(source.id) === String(sourceId))
+
+      qc.setQueryData(['signal-sources'], (current = []) =>
+        current.filter((source) => String(source.id) !== String(sourceId))
+      )
+
+      if (deletedSource) {
+        qc.setQueryData(['leads'], (current = []) =>
+          current.filter((lead) => (lead.source ?? lead.signal) !== deletedSource.url)
+        )
+      }
+
+      return { previousSources, previousLeads }
+    },
+    onError: (_error, _sourceId, context) => {
+      if (context?.previousSources) {
+        qc.setQueryData(['signal-sources'], context.previousSources)
+      }
+      if (context?.previousLeads) {
+        qc.setQueryData(['leads'], context.previousLeads)
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['signal-sources'] })
+      qc.invalidateQueries({ queryKey: ['leads'] })
+      qc.invalidateQueries({ queryKey: ['strategy'] })
+    },
+  })
+
+  const addSource = async (url) => {
+    const data = await addMutation.mutateAsync(url)
+    return data
+  }
+
+  const leadCountsBySource = (leadsQuery.data ?? []).reduce((counts, lead) => {
+    const source = lead.source ?? lead.signal
+    if (!source) return counts
+    counts[source] = (counts[source] ?? 0) + 1
+    return counts
+  }, {})
+
+  const sources = (sourcesQuery.data ?? []).map((source) => ({
+    ...source,
+    lead_count: leadCountsBySource[source.url] ?? source.lead_count ?? 0,
+  }))
+
+  return {
+    sources,
+    add: addSource,
+    remove: (id) => deleteMutation.mutate(id),
+    isLoading: sourcesQuery.isLoading || leadsQuery.isLoading,
+    isPending: addMutation.isPending,
+    deletingId: deleteMutation.variables,
+    isDeleting: deleteMutation.isPending,
+    error: addMutation.error ?? deleteMutation.error ?? sourcesQuery.error ?? leadsQuery.error,
+  }
 }
 
 export default function SignalSourcesPanel() {
   const [url, setUrl] = useState('')
-  const { sources, add, isPending, error } = useSources()
+  const { sources, add, remove, isLoading, isPending, deletingId, isDeleting, error } = useSources()
+  const totalLeads = sources.reduce((sum, source) => sum + getLeadCount(source), 0)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -100,7 +179,12 @@ export default function SignalSourcesPanel() {
         </span>
       </div>
 
-      {sources.length === 0 ? (
+      {isLoading ? (
+        <div className="loading-wrap">
+          <Loader2 size={22} style={{ animation: 'spin 0.7s linear infinite', color: 'var(--cyan)' }} />
+          <span>Loading sources...</span>
+        </div>
+      ) : sources.length === 0 ? (
         <div className="glass empty-state">
           <Radio size={40} />
           <p style={{ fontSize: 'var(--text-lg)', color: 'var(--t2)' }}>No sources yet</p>
@@ -109,7 +193,12 @@ export default function SignalSourcesPanel() {
       ) : (
         <div className="source-list">
           {sources.map((src, i) => (
-            <SourceCard key={src.id ?? i} source={src} />
+            <SourceCard
+              key={src.id ?? i}
+              source={src}
+              onDelete={remove}
+              isDeleting={isDeleting && String(deletingId) === String(src.id)}
+            />
           ))}
         </div>
       )}
@@ -127,17 +216,17 @@ export default function SignalSourcesPanel() {
           }}
         >
           <Stat label="Sources active" value={sources.length} color="var(--cyan)" />
-          <Stat label="Total leads found" value={sources.reduce((s, x) => s + (x.leadCount ?? 0), 0)} color="var(--purple)" />
-          <Stat label="Avg leads / source" value={sources.length ? Math.round(sources.reduce((s, x) => s + (x.leadCount ?? 0), 0) / sources.length) : 0} color="var(--amber)" />
+          <Stat label="Total leads found" value={totalLeads} color="var(--purple)" />
+          <Stat label="Avg leads / source" value={sources.length ? Math.round(totalLeads / sources.length) : 0} color="var(--amber)" />
         </div>
       )}
     </div>
   )
 }
 
-function SourceCard({ source }) {
+function SourceCard({ source, onDelete, isDeleting }) {
   return (
-    <div className="source-item">
+    <div className="source-item" style={{ opacity: isDeleting ? 0.55 : 1, transition: 'opacity 0.2s' }}>
       <div style={{
         width: 36, height: 36, borderRadius: 10, flexShrink: 0,
         background: 'linear-gradient(135deg, rgba(80,180,255,0.15), rgba(140,80,255,0.15))',
@@ -149,15 +238,36 @@ function SourceCard({ source }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="source-url truncate">{source.url}</div>
         <div style={{ fontSize: 'var(--text-sm)', color: 'var(--t3)', marginTop: 2 }}>
-          ID: {source.id} · LinkedIn Signal
+          LinkedIn Signal
         </div>
       </div>
       <div className="source-count">
         <Users size={11} style={{ display: 'inline', marginRight: 4 }} />
-        {source.leadCount ?? 0} leads
+        {getLeadCount(source)} leads
       </div>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        title={`Delete source ${source.id}`}
+        disabled={isDeleting}
+        onClick={() => onDelete(source.id)}
+        style={{
+          color: 'var(--red)',
+          padding: '0.35rem',
+          borderRadius: 6,
+          flexShrink: 0,
+        }}
+      >
+        {isDeleting
+          ? <Loader2 size={13} style={{ animation: 'spin 0.7s linear infinite' }} />
+          : <Trash2 size={13} />}
+      </button>
     </div>
   )
+}
+
+function getLeadCount(source) {
+  return source.lead_count ?? source.leadCount ?? 0
 }
 
 function Stat({ label, value, color }) {

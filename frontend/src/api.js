@@ -13,12 +13,21 @@ export const addSignalSource = (url) =>
 export const getSignalSources = () =>
   client.get('/signal-sources').then((r) => r.data)
 
+export const deleteSignalSource = (id) =>
+  client.delete(`/signal-sources/${id}`)
+
 // Leads
 export const getLeads = () =>
   client.get('/leads').then((r) => r.data)
 
 export const getLeadTimeline = (id) =>
-  client.get(`/leads/${id}`).then((r) => r.data)
+  client.get(`/leads/${id}`).then((r) => r.data).catch((e) => {
+    if (e.response && e.response.status === 404) return null;
+    throw e;
+  })
+
+export const deleteLead = (id) =>
+  client.delete(`/leads/${id}`)
 
 // Strategy
 export const getStrategy = () =>

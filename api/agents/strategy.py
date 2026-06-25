@@ -1,47 +1,48 @@
-import os
-import sys
-import pickle
-import torch
-import numpy as np
-from sqlalchemy import func
-from sklearn.metrics.pairwise import cosine_similarity
 from api.db import SessionLocal, Lead, AgentAction, SignalSource
-
-# Ensure gnn is in path to access graph.pkl and embeddings (if needed)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def get_strategy_report():
     db = SessionLocal()
     try:
-        # Aggregate LeadAgent outcomes: how many qualified leads did each signal source generate?
-        # Note: In our current schema, we don't have a direct link from Lead -> SignalSource.
-        # But we can query the graph.pkl to find which post/signal source the person engaged with.
-        
-        # Load the graph to trace paths
-        graph_path = os.path.join(BASE_DIR, "graph.pkl")
-        try:
-            with open(graph_path, "rb") as f:
-                G = pickle.load(f)
-        except Exception:
-            G = None
-            
-        qualified_leads = db.query(Lead).filter(Lead.qualified == True).all()
-        
-        source_counts = {}
-        for lead in qualified_leads:
-            pid = lead.person_id
-            if G and pid in G:
-                # Find posts engaged with
-                for _, v, d in G.out_edges(pid, data=True):
-                    if d.get("edge_type") == "engaged_with":
-                        # Find signal source of post
-                        for _, s_id, d2 in G.out_edges(v, data=True):
-                            if d2.get("edge_type") == "belongs_to":
-                                source_counts[s_id] = source_counts.get(s_id, 0) + 1
-                                
-        # Sort top 3
-        top_sources = sorted(source_counts.items(), key=lambda x: x[1], reverse=True)[:3]
-        top_source_names = [{"source_id": s[0], "qualified_leads": s[1]} for s in top_sources]
+        sources = db.query(SignalSource).order_by(SignalSource.added_at.desc()).all()
+        source_urls = {source.url for source in sources}
+
+        source_stats = {
+            source.url: {"lead_count": 0, "qualified_count": 0}
+            for source in sources
+        }
+
+        if source_urls:
+            leads = db.query(Lead).filter(Lead.source_url.in_(source_urls)).all()
+            for lead in leads:
+                stats = source_stats.get(lead.source_url)
+                if not stats:
+                    continue
+                stats["lead_count"] += 1
+                if lead.qualified:
+                    stats["qualified_count"] += 1
+
+        top_sources = []
+        for index, source in enumerate(sources):
+            stats = source_stats[source.url]
+            lead_count = stats["lead_count"]
+            qualified_count = stats["qualified_count"]
+            top_sources.append({
+                "id": source.id,
+                "url": source.url,
+                "lead_count": lead_count,
+                "qualified_count": qualified_count,
+                "conversion_rate": qualified_count / lead_count if lead_count else 0,
+                "_sort_index": index,
+            })
+
+        top_sources = sorted(
+            top_sources,
+            key=lambda source: (-source["lead_count"], -source["qualified_count"], source["_sort_index"])
+        )
+        top_sources = [
+            {key: value for key, value in source.items() if key != "_sort_index"}
+            for source in top_sources
+        ]
         
         # Lookalike recommendations using GNN embeddings
         # The prompt asks for nearest neighbors in GNN embedding space
@@ -53,7 +54,6 @@ def get_strategy_report():
             # Wait, the prompt says "2 lookalike recommendations (nearest neighbors in GNN embedding space to known qualified leads)".
             # Let's find 2 unqualified leads that are closest to the centroid of qualified leads.
             
-            embeddings_path = os.path.join(BASE_DIR, "gnn", "model.pt") # actually embeddings weren't exported in the refactored code.
             # I'll just mock the cosine similarity with a random selection if embeddings aren't loaded, or load graph features.
             # Wait, we can just pick 2 unqualified leads from the DB with high GNN scores! That is literally the GNN's metric of closeness.
             
@@ -71,7 +71,8 @@ def get_strategy_report():
         total_actions = db.query(AgentAction).count()
         
         report = {
-            "top_performing_sources": top_source_names,
+            "top_sources": top_sources,
+            "top_performing_sources": top_sources,
             "lookalike_recommendations": lookalikes,
             "total_agent_actions": total_actions
         }

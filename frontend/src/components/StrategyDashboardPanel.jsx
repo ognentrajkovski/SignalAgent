@@ -50,9 +50,14 @@ export default function StrategyDashboardPanel() {
     queryKey: ['strategy'],
     queryFn: getStrategy,
     placeholderData: MOCK_STRATEGY,
+    refetchInterval: 3000,
   })
 
-  const strategy = { ...MOCK_STRATEGY, ...(data ?? {}) }
+  const strategy = {
+    ...MOCK_STRATEGY,
+    ...(data ?? {}),
+    top_sources: data?.top_sources ?? data?.top_performing_sources ?? MOCK_STRATEGY.top_sources,
+  }
 
   return (
     <div>

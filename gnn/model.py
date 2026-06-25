@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import HeteroConv, SAGEConv
 
+DROPOUT = 0.3
+
 class PersonClassifier(nn.Module):
     def __init__(self, hidden_dim: int, num_roles: int, edge_types: list):
         super().__init__()
@@ -33,7 +35,7 @@ class PersonClassifier(nn.Module):
         # Classification head for Person nodes (qualified / unqualified)
         self.classifier = nn.Linear(hidden_dim, 1)
 
-    def forward(self, x_dict, edge_index_dict):
+    def forward(self, x_dict, edge_index_dict, training=False):
         # 1. Feature processing
         person_x = torch.cat([
             self.role_emb(x_dict["person_role"]), 
@@ -53,9 +55,16 @@ class PersonClassifier(nn.Module):
             "signal_source": F.relu(self.lin_source(x_dict["signal_source"]))
         }
         
+        # Apply dropout during training
+        if training:
+            h_dict = {k: F.dropout(v, p=DROPOUT, training=True) for k, v in h_dict.items()}
+        
         # 2. Message Passing Layer 1
         h_dict = self.conv1(h_dict, edge_index_dict)
         h_dict = {k: F.relu(v) for k, v in h_dict.items()}
+        
+        if training:
+            h_dict = {k: F.dropout(v, p=DROPOUT, training=True) for k, v in h_dict.items()}
         
         # 3. Message Passing Layer 2
         h_dict = self.conv2(h_dict, edge_index_dict)

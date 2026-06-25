@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./signaldb.sqlite")
@@ -26,13 +26,14 @@ class Lead(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     person_id = Column(String, unique=True, index=True, nullable=False)
+    source_url = Column(Text, nullable=True)
     gnn_score = Column(Float, nullable=True)
     llm_score = Column(Float, nullable=True)
     llm_rationale = Column(Text, nullable=True)
     disagreement_flag = Column(Boolean, default=False)
     qualified = Column(Boolean, default=False)
     
-    actions = relationship("AgentAction", back_populates="lead")
+    actions = relationship("AgentAction", back_populates="lead", cascade="all, delete-orphan")
 
 class AgentAction(Base):
     __tablename__ = "agent_actions"
@@ -47,6 +48,11 @@ class AgentAction(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    inspector = inspect(engine)
+    lead_columns = {column["name"] for column in inspector.get_columns("leads")}
+    if "source_url" not in lead_columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE leads ADD COLUMN source_url TEXT"))
 
 if __name__ == "__main__":
     init_db()
