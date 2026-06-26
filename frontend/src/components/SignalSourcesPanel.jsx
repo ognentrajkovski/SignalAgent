@@ -9,13 +9,11 @@ function useSources() {
   const sourcesQuery = useQuery({
     queryKey: ['signal-sources'],
     queryFn: getSignalSources,
-    refetchInterval: 3000,
   })
 
   const leadsQuery = useQuery({
     queryKey: ['leads'],
     queryFn: getLeads,
-    refetchInterval: 3000,
   })
 
   const addMutation = useMutation({
@@ -28,6 +26,7 @@ function useSources() {
       qc.invalidateQueries({ queryKey: ['signal-sources'] })
       qc.invalidateQueries({ queryKey: ['leads'] })
       qc.invalidateQueries({ queryKey: ['strategy'] })
+      qc.invalidateQueries({ queryKey: ['graph'] })
     },
   })
 
@@ -65,6 +64,7 @@ function useSources() {
       qc.invalidateQueries({ queryKey: ['signal-sources'] })
       qc.invalidateQueries({ queryKey: ['leads'] })
       qc.invalidateQueries({ queryKey: ['strategy'] })
+      qc.invalidateQueries({ queryKey: ['graph'] })
     },
   })
 

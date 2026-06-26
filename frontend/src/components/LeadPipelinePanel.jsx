@@ -80,6 +80,7 @@ export default function LeadPipelinePanel() {
       qc.invalidateQueries({ queryKey: ['leads'] })
       qc.invalidateQueries({ queryKey: ['signal-sources'] })
       qc.invalidateQueries({ queryKey: ['strategy'] })
+      qc.invalidateQueries({ queryKey: ['graph'] })
     },
   })
 
@@ -88,7 +89,15 @@ export default function LeadPipelinePanel() {
     : (data ?? []).map((lead) => {
       const profile = mockProfileForLead(lead)
       const source = lead.source ?? lead.signal ?? profile.source
-      return { ...profile, ...lead, source, signal: source }
+      return {
+        ...profile,
+        ...lead,
+        name:    lead.name    ?? profile.name,
+        role:    lead.role    ?? profile.role,
+        company: lead.company ?? profile.company,
+        source,
+        signal: source,
+      }
     })
 
   const qualified = leads.filter((l) => l.qualified)

@@ -33,7 +33,7 @@ function Sidebar() {
         </div>
         <div>
           <div className="brand-name">SignalAgent</div>
-          <div className="brand-sub">AI Lead Intelligence</div>
+          <div className="brand-sub">GTM Intelligence</div>
         </div>
       </div>
 
@@ -59,12 +59,6 @@ function Sidebar() {
           )
         })}
       </nav>
-
-      {/* Footer */}
-      <div className="sidebar-footer">
-        <div className="sidebar-footer-badge">GNN + LLM Dual Score</div>
-        <div className="sidebar-footer-badge">LangGraph Orchestration</div>
-      </div>
     </aside>
   )
 }

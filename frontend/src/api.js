@@ -22,12 +22,15 @@ export const getLeads = () =>
 
 export const getLeadTimeline = (id) =>
   client.get(`/leads/${id}`).then((r) => r.data).catch((e) => {
-    if (e.response && e.response.status === 404) return null;
-    throw e;
+    if (e.response && e.response.status === 404) return null
+    throw e
   })
 
 export const deleteLead = (id) =>
   client.delete(`/leads/${id}`)
+
+export const approveLeadAction = (leadId, actionId) =>
+  client.patch(`/leads/${leadId}/actions/${actionId}/approve`).then((r) => r.data)
 
 // Strategy
 export const getStrategy = () =>
@@ -37,6 +40,6 @@ export const getStrategy = () =>
 export const qualifyPerson = (personId) =>
   client.post(`/demo/qualify/${personId}`).then((r) => r.data)
 
-// Graph data (mock endpoint — falls back gracefully)
+// Graph data - wired to real /graph endpoint
 export const getGraphData = () =>
-  client.get('/graph').catch(() => ({ data: { nodes: [], edges: [] } })).then((r) => r.data)
+  client.get('/graph').then((r) => r.data)

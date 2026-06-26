@@ -1,9 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { BarChart3, Sparkles, Users, TrendingUp, Target, Zap, Loader2 } from 'lucide-react'
-import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis,
-  CartesianGrid, Tooltip, Legend, ReferenceLine,
-} from 'recharts'
+
 import { getStrategy } from '../api'
 
 const MOCK_STRATEGY = {
@@ -17,40 +14,18 @@ const MOCK_STRATEGY = {
     { suggested_url: 'linkedin.com/posts/ai-infrastructure-2024', reason: 'Matches profile cluster of senior engineers at growth-stage startups.' },
   ],
   community_summaries: [
-    { name: 'React/Next.js Core',   size: 312, top_topics: ['RSC', 'Edge compute', 'Monorepos'],  engagement: 0.74 },
-    { name: 'AI Tooling Builders',  size: 189, top_topics: ['LLMs', 'Agents', 'Vector DBs'],      engagement: 0.88 },
-    { name: 'DevOps / Platform Eng',size: 143, top_topics: ['K8s', 'FinOps', 'IaC'],             engagement: 0.61 },
+    { name: 'RevOps Leaders', size: 466, top_topics: ['Revenue operations stack', 'CRM hygiene', 'GTM alignment'], engagement: 0.74 },
+    { name: 'PLG Founders',  size: 466, top_topics: ['Product-led growth', 'Freemium conversion', 'Self-serve onboarding'], engagement: 0.88 },
+    { name: 'GTM Executives', size: 468, top_topics: ['Enterprise sales motion', 'Outbound strategy', 'Pipeline generation'], engagement: 0.61 },
   ],
 }
 
-// Synthetic accuracy comparison data (GNN+LLM vs LLM-only)
-const ACCURACY_DATA = [
-  { epoch: 1,  gnn_llm: 0.61, llm_only: 0.55 },
-  { epoch: 2,  gnn_llm: 0.66, llm_only: 0.57 },
-  { epoch: 3,  gnn_llm: 0.70, llm_only: 0.59 },
-  { epoch: 4,  gnn_llm: 0.74, llm_only: 0.61 },
-  { epoch: 5,  gnn_llm: 0.77, llm_only: 0.62 },
-  { epoch: 6,  gnn_llm: 0.80, llm_only: 0.63 },
-  { epoch: 7,  gnn_llm: 0.82, llm_only: 0.63 },
-  { epoch: 8,  gnn_llm: 0.84, llm_only: 0.64 },
-  { epoch: 9,  gnn_llm: 0.85, llm_only: 0.65 },
-  { epoch: 10, gnn_llm: 0.87, llm_only: 0.65 },
-]
-
-const TOOLTIP_STYLE = {
-  background: 'rgba(15, 12, 28, 0.95)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: 10,
-  color: '#fff',
-  fontSize: 12,
-}
 
 export default function StrategyDashboardPanel() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['strategy'],
     queryFn: getStrategy,
     placeholderData: MOCK_STRATEGY,
-    refetchInterval: 3000,
   })
 
   const strategy = {
@@ -165,7 +140,7 @@ export default function StrategyDashboardPanel() {
             <div className="card-icon" style={{ background: 'rgba(255,180,0,0.12)' }}>
               <TrendingUp size={14} color="var(--amber)" />
             </div>
-            Emerging Communities
+            Target Communities
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {(strategy.community_summaries ?? []).map((comm, i) => {
@@ -202,73 +177,6 @@ export default function StrategyDashboardPanel() {
               )
             })}
           </div>
-        </div>
-      </div>
-
-      {/* Accuracy comparison chart */}
-      <div className="glass" style={{ padding: '1.75rem' }}>
-        <div style={{ marginBottom: '1.25rem' }}>
-          <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: '0.25rem' }}>Qualifier Accuracy: GNN+LLM vs LLM-Only</h2>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--t2)' }}>
-            Validation accuracy on synthetic held-out set across training epochs
-          </p>
-        </div>
-        <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={ACCURACY_DATA} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-            <XAxis
-              dataKey="epoch"
-              tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 12 }}
-              label={{ value: 'Epoch', position: 'insideBottom', offset: -2, fill: 'rgba(255,255,255,0.3)', fontSize: 11 }}
-            />
-            <YAxis
-              domain={[0.5, 1.0]}
-              tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
-              tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 12 }}
-            />
-            <Tooltip
-              contentStyle={TOOLTIP_STYLE}
-              formatter={(v, name) => [`${(v * 100).toFixed(1)}%`, name]}
-            />
-            <Legend
-              wrapperStyle={{ fontSize: 12, paddingTop: 12, color: 'rgba(255,255,255,0.6)' }}
-            />
-            <ReferenceLine y={0.8} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 4" label={{ value: '80%', fill: 'rgba(255,255,255,0.2)', fontSize: 10 }} />
-            <Line
-              type="monotone"
-              dataKey="gnn_llm"
-              name="GNN + LLM"
-              stroke="oklch(0.78 0.14 220)"
-              strokeWidth={2.5}
-              dot={{ fill: 'oklch(0.78 0.14 220)', r: 3 }}
-              activeDot={{ r: 5 }}
-            />
-            <Line
-              type="monotone"
-              dataKey="llm_only"
-              name="LLM Only"
-              stroke="oklch(0.68 0.20 295)"
-              strokeWidth={2}
-              strokeDasharray="5 3"
-              dot={{ fill: 'oklch(0.68 0.20 295)', r: 3 }}
-              activeDot={{ r: 5 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-        <div style={{
-          marginTop: '1rem',
-          display: 'flex', gap: '1.5rem', justifyContent: 'center',
-          fontSize: 'var(--text-sm)', color: 'var(--t2)',
-        }}>
-          <span>
-            GNN+LLM final: <strong style={{ color: 'var(--cyan)' }}>87%</strong>
-          </span>
-          <span>
-            LLM-only final: <strong style={{ color: 'var(--purple)' }}>65%</strong>
-          </span>
-          <span>
-            Delta: <strong style={{ color: 'var(--green)' }}>+22pp</strong>
-          </span>
         </div>
       </div>
     </div>

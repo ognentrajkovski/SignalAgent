@@ -43,16 +43,23 @@ class AgentAction(Base):
     action_type = Column(String, nullable=False)
     rationale = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
+    approved = Column(Boolean, default=False)
     
     lead = relationship("Lead", back_populates="actions")
 
 def init_db():
     Base.metadata.create_all(bind=engine)
     inspector = inspect(engine)
+
     lead_columns = {column["name"] for column in inspector.get_columns("leads")}
     if "source_url" not in lead_columns:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE leads ADD COLUMN source_url TEXT"))
+
+    action_columns = {column["name"] for column in inspector.get_columns("agent_actions")}
+    if "approved" not in action_columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE agent_actions ADD COLUMN approved BOOLEAN DEFAULT FALSE"))
 
 if __name__ == "__main__":
     init_db()

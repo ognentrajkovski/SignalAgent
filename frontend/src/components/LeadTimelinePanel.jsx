@@ -4,7 +4,7 @@ import {
   ArrowLeft, Heart, Clock, UserPlus, CheckCircle2,
   Loader2, Zap, MessageSquare, Send, Timer, Link2, Search, FileText, XCircle,
 } from 'lucide-react'
-import { getLeadTimeline } from '../api'
+import { getLeadTimeline, approveLeadAction } from '../api'
 
 const ACTION_ICONS = {
   source_detected:           { icon: Search,       color: 'var(--cyan)',   bg: 'rgba(80,180,255,0.12)'  },
@@ -181,14 +181,21 @@ function mergeTimeline(mockTimeline, apiTimeline = [], lead = {}) {
     .map((action, index) => ({
       timestamp: action.timestamp ?? `2026-06-21T1${index}:00:00Z`,
       reply_probability: action.reply_probability ?? null,
-      status: action.status ?? 'done',
+      // approved=false means pending human review
+      status: action.approved === false ? 'pending' : (action.status ?? 'done'),
       ...action,
       action_type: lead.qualified === false && action.action_type === 'qualify'
         ? 'disqualify'
         : action.action_type,
     }))
 
-  return [...mockTimeline, ...normalizedApiActions]
+  // Deduplicate: drop mock steps whose action_type already appears in real DB actions
+  const apiActionTypes = new Set(normalizedApiActions.map((a) => a.action_type))
+  const deduplicatedMock = mockTimeline.filter(
+    (step) => !apiActionTypes.has(step.action_type)
+  )
+
+  return [...deduplicatedMock, ...normalizedApiActions]
 }
 
 function isDefaultWaitAction(action) {
@@ -231,9 +238,9 @@ export default function LeadTimelinePanel() {
   const timeline = mergeTimeline(buildMockTimeline(lead), data?.timeline ?? [], lead)
 
   const approveMutation = useMutation({
-    mutationFn: async (index) => {
-      await new Promise((r) => setTimeout(r, 600))
-      return index
+    mutationFn: ({ actionId }) => approveLeadAction(id, actionId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['lead-timeline', id] })
     },
   })
 
@@ -356,9 +363,10 @@ export default function LeadTimelinePanel() {
                         id={`approve-action-${i}`}
                         className="btn btn-amber btn-sm"
                         style={{ marginTop: '0.75rem' }}
-                        onClick={async () => {
-                          await approveMutation.mutateAsync(i)
-                          qc.invalidateQueries(['lead-timeline', id])
+                        onClick={() => {
+                          if (action.id) {
+                            approveMutation.mutate({ actionId: action.id })
+                          }
                         }}
                         disabled={approveMutation.isPending}
                       >
